@@ -17,7 +17,7 @@ bash .claude/skills/run-ccpm/driver.sh all
 
 That is the whole loop: static-lint the bundle, build a sandbox at
 `/tmp/ccpm-sandbox`, run all 14 script-backed commands, assert their output.
-It prints `passed: N  failed: 0` and exits 0 on a clean checkout.
+It prints `passed: 140  failed: 0` and exits 0 on a clean checkout.
 
 ## Prerequisites
 
@@ -29,8 +29,8 @@ Everything the driver needs is already present on a stock Ubuntu container
 sudo apt-get update && sudo apt-get install -y gh   # installs gh 2.45.0
 ```
 
-You do **not** need `gh` for the driver — none of the 14 script-backed
-reporting commands touch the network.
+`gh` is optional: the 13 reporting commands never touch the network. Only
+`init.sh` needs it, and `smoke` skips that one check when `gh` is absent.
 
 ## Run (agent path)
 
@@ -43,7 +43,7 @@ bash .claude/skills/run-ccpm/driver.sh all       # all three
 
 Override the sandbox location with `CCPM_SANDBOX=/path bash ... driver.sh all`.
 
-**`lint`** (114 assertions) is the one that catches the breakage this repo
+**`lint`** (119 assertions) is the one that catches the breakage this repo
 actually ships. It runs `bash -n` over every shipped `.sh`, checks every
 shebang, resolves every `!bash` and `allowed-tools: Bash(bash …)` target,
 validates command frontmatter, resolves `rules/*.md` references, extracts
@@ -57,11 +57,13 @@ and seeds: 3 PRDs (one per status), 3 epics (one per status), 5 tasks
 and one `updates/002/progress.md` at 35% so `in-progress` and `standup`
 have something to report.
 
-**`smoke`** (19 assertions) runs each command and greps for exact expected
-strings — counts, percentages, task names. It also asserts the four
-argument-less error paths exit 1, that all 46 commands are discoverable with
-their scripts resolving, and that `validate.sh` actually flags an injected
-broken dependency reference.
+**`smoke`** (21 assertions) runs each of the 13 reporting commands and greps
+for exact expected strings — counts, percentages, task names — asserting the
+exit code too. It also checks the four argument-less error paths exit 1,
+runs `init.sh` (the 14th script) separately since it needs `gh` and mutates
+the sandbox, confirms all 46 commands are discoverable with their scripts
+resolving, and verifies `validate.sh` actually flags an injected broken
+dependency reference.
 
 The assertions are not vacuous. Flipping one fixture task from `closed` to
 `open` trips 5 of them across `/pm:status`, `/pm:epic-show`,
@@ -171,12 +173,17 @@ terminal it will sit at an interactive prompt.
 `ccpm/scripts/test-and-log.sh`.** `ccpm/agents/test-runner.md` names the
 stale path three times. The file does exist — just not where the agent looks.
 
-**Five rules are never referenced by anything.** `path-standards.md`,
-`standard-patterns.md`, `strip-frontmatter.md`, `test-execution.md`,
-`use-ast-grep.md`. Only `datetime.md` is actually cited (6 times), so a
-command that should follow `strip-frontmatter.md` or `github-operations.md`
-has no `## Required Rules` line pointing at it. `lint` reports what resolves,
-not what *should* be cited — check by hand when adding a command.
+**Five of the eleven rules are never referenced by anything.**
+`path-standards.md`, `standard-patterns.md`, `strip-frontmatter.md`,
+`test-execution.md`, `use-ast-grep.md`. The other six are cited 2–7 times.
+So a command that ought to follow `strip-frontmatter.md` has no
+`## Required Rules` line pointing at it. `lint` reports what resolves, not
+what *should* be cited — check by hand when adding a command.
+
+Note the citations are written three ways — `.claude/rules/x.md`,
+`ccpm/rules/x.md`, and a bare `/rules/x.md` (the most common form, 21 of
+them). A reference check that only matches the prefixed forms sees one
+lonely rule and looks like a much bigger finding than it is.
 
 **`((count++))` returns exit 1 when count is 0.** The PM scripts rely on not
 running under `set -e`. If you add `set -e` to one of them it will exit
@@ -194,6 +201,15 @@ silently at the first increment. All of them end with an explicit `exit 0`.
 - **`ccpm/commands/pm/epic-sync.md` block 12** — the heredoc opened with
   `<< 'EOF'` is terminated by an indented `  EOF`, which doesn't close it.
   (`<<-` wouldn't help either; it strips tabs, not spaces.)
+
+**`prd-list.sh` silently drops PRDs whose status is `complete`.** `CLAUDE.md`
+documents the PRD vocabulary as `backlog|in-progress|complete`, but
+`prd-list.sh` buckets on `implemented|completed|done`. A PRD marked with the
+documented `complete` matches no bucket, so it is counted in the total and
+listed nowhere — `Total PRDs: 3` above `1 + 1 + 0`. `prd-status.sh` disagrees
+differently, falling through to `*)` and counting it as backlog. The fixture
+uses the documented vocabulary, so `smoke` asserts the current buggy output;
+fixing the script means updating that assertion.
 
 Also allowlisted: **`ccpm/scripts/pm/prd-list.sh` starts with `# !/bin/bash`**
 — a commented-out shebang. Harmless while it's invoked as `bash prd-list.sh`
