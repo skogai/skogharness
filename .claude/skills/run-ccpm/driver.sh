@@ -14,6 +14,7 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SANDBOX="${CCPM_SANDBOX:-/tmp/ccpm-sandbox}"
+case "$SANDBOX" in /*) ;; *) SANDBOX="$PWD/$SANDBOX" ;; esac   # cmd_smoke needs it absolute
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "  ok   $*"; }
 bad()  { FAIL=$((FAIL+1)); echo "  FAIL $*"; }
@@ -71,8 +72,9 @@ lint_frontmatter() {
   while read -r f; do
     rel="${f#$REPO/}"
     if [ "$(head -1 "$f")" != "---" ]; then bad "$rel: does not open with ---"; continue; fi
-    if ! sed -n '2,20p' "$f" | grep -q '^---$'; then bad "$rel: frontmatter never closes"; continue; fi
-    if ! sed -n '2,20p' "$f" | grep -q '^allowed-tools:'; then bad "$rel: no allowed-tools"; continue; fi
+    close=$(awk 'NR>1 && /^---$/{print NR; exit}' "$f")
+    if [ -z "$close" ]; then bad "$rel: frontmatter never closes"; continue; fi
+    if ! sed -n "2,$((close-1))p" "$f" | grep -q '^allowed-tools:'; then bad "$rel: no allowed-tools"; continue; fi
     ok "$rel"
   done < <(find "$REPO/ccpm/commands" -name '*.md' | sort)
 }
@@ -84,8 +86,9 @@ lint_rule_refs() {
     n=$((n+1)); base="${r##*/}"
     if [ -f "$REPO/ccpm/rules/$base" ]; then ok "$r -> ccpm/rules/$base"
     else bad "$r references a rule that does not exist"; fi
-  done < <(grep -rhoE '(\.claude|ccpm)/rules/[A-Za-z0-9._-]+\.md' \
-             "$REPO/ccpm/commands" "$REPO/ccpm/agents" | sort -u)
+  done < <(grep -rhoE '(\.claude|ccpm)?/rules/[A-Za-z0-9._-]+\.md' \
+             "$REPO/ccpm/commands" "$REPO/ccpm/agents" \
+           | grep -oE '/rules/[A-Za-z0-9._-]+\.md' | sort -u)
   [ "$n" -eq 0 ] && echo "  (no rule references found)"
 }
 
@@ -140,7 +143,8 @@ cmd_lint() {
 
 cmd_sandbox() {
   head_ "building sandbox at $SANDBOX"
-  rm -rf "$SANDBOX"; mkdir -p "$SANDBOX"; cd "$SANDBOX"
+  rm -rf "$SANDBOX"; mkdir -p "$SANDBOX"
+  ( cd "$SANDBOX" || exit 1
   git init -q .
   git remote add origin https://github.com/acme/demo-app.git   # NOT automazeio/ccpm
   cp -r "$REPO/ccpm" .                                         # what install/ccpm.sh yields
@@ -173,7 +177,7 @@ EOF
   }
   prd user-auth backlog     "Authentication for the demo app"
   prd payments  in-progress "Card payments and refunds"
-  prd search-v2 implemented "Rewritten search backend"
+  prd search-v2 complete    "Rewritten search backend"   # documented vocabulary
 
   epic() { # epic <name> <status> <progress> [github]
     mkdir -p ".claude/epics/$1"
@@ -222,21 +226,30 @@ EOF
   epic search-v2 completed 100%
   task search-v2 001 "Swap in new indexer" closed "" false
 
+  )
   echo "  sandbox ready: 3 PRDs, 3 epics, 5 tasks (3 open / 2 closed), 1 in-progress update"
 }
 
 # --------------------------------------------------------------- smoke
 
-# expect <label> <script> [args...] -- <substring>...
+# expect <label> <script> [args...] -- [rc=N] <substring>...
 expect() {
   local label="$1" script="$2"; shift 2
-  local args=() want=()
+  local args=() want=() want_rc=0
   while [ $# -gt 0 ] && [ "$1" != "--" ]; do args+=("$1"); shift; done; shift || true
-  while [ $# -gt 0 ]; do want+=("$1"); shift; done
+  while [ $# -gt 0 ]; do
+    case "$1" in rc=*) want_rc="${1#rc=}" ;; *) want+=("$1") ;; esac; shift
+  done
 
   local out rc
-  out=$(cd "$SANDBOX" && bash "ccpm/scripts/pm/$script" "${args[@]:-}" 2>&1); rc=$?
+  # NB: "${args[@]:-}" would pass one empty string, not zero args.
+  if [ ${#args[@]} -eq 0 ]; then
+    out=$(cd "$SANDBOX" && bash "ccpm/scripts/pm/$script" 2>&1); rc=$?
+  else
+    out=$(cd "$SANDBOX" && bash "ccpm/scripts/pm/$script" "${args[@]}" 2>&1); rc=$?
+  fi
   local missing=()
+  [ "$rc" = "$want_rc" ] || missing+=("<exit $want_rc, got $rc>")
   for w in "${want[@]}"; do grep -qF -- "$w" <<<"$out" || missing+=("$w"); done
   if [ ${#missing[@]} -eq 0 ]; then
     ok "$label (exit $rc)"
@@ -252,7 +265,10 @@ cmd_smoke() {
   head_ "script-backed /pm:* commands against the sandbox"
 
   expect "/pm:status"      status.sh      -- "📊 Project Status" "Total: 3" "Open: 3" "Closed: 2"
-  expect "/pm:prd-list"    prd-list.sh    -- "Total PRDs: 3" "Backlog: 1" "In-Progress: 1" "Implemented: 1"
+  # KNOWN BUG: a PRD with the documented status `complete` matches none of
+  # prd-list.sh's three buckets, so it is counted in the total but listed
+  # nowhere (1 + 1 + 0 != 3). See SKILL.md "Known-broken command blocks".
+  expect "/pm:prd-list"    prd-list.sh    -- "Total PRDs: 3" "Backlog: 1" "In-Progress: 1" "Implemented: 0"
   expect "/pm:prd-status"  prd-status.sh  -- "PRD Status Report" "Total PRDs: 3"
   expect "/pm:epic-list"   epic-list.sh   -- "Total epics: 3" "Total tasks: 5" "user-auth" "search-v2"
   expect "/pm:epic-show"   epic-show.sh   user-auth -- "Epic: user-auth" "Total tasks: 3" "Open: 2" "Closed: 1" "Completion: 33%"
@@ -266,10 +282,29 @@ cmd_smoke() {
   expect "/pm:help"        help.sh        -- "Claude Code PM" "/pm:prd-new" "/pm:epic-sync"
 
   head_ "error paths"
-  expect "epic-show w/o arg"  epic-show.sh   -- "Please provide an epic name"
-  expect "epic-status w/o arg" epic-status.sh -- "Please specify an epic name"
-  expect "search w/o arg"     search.sh      -- "Please provide a search query"
-  expect "epic-show bogus"    epic-show.sh   nope -- "Epic not found: nope"
+  expect "epic-show w/o arg"   epic-show.sh   -- rc=1 "Please provide an epic name"
+  expect "epic-status w/o arg" epic-status.sh -- rc=1 "Please specify an epic name"
+  expect "search w/o arg"      search.sh      -- rc=1 "Please provide a search query"
+  expect "epic-show bogus"     epic-show.sh   nope -- rc=1 "Epic not found: nope"
+
+  head_ "init.sh (the 14th script; needs gh, mutates the sandbox)"
+  if command -v gh >/dev/null 2>&1; then
+    local out rc
+    out=$(cd "$SANDBOX" && timeout 120 bash ccpm/scripts/pm/init.sh 2>&1); rc=$?
+    if [ "$rc" -eq 0 ] && grep -qF "Initialization Complete" <<<"$out"; then
+      ok "init.sh completes (exit 0) despite unauthenticated gh"
+    else
+      bad "init.sh exit $rc"; tail -5 <<<"$out" | sed 's/^/         | /'
+    fi
+    # documents the empty-dir defect rather than asserting it is correct
+    if [ -d "$SANDBOX/.claude/scripts/pm" ] && [ -z "$(ls -A "$SANDBOX/.claude/scripts/pm")" ]; then
+      ok "known defect reproduced: init.sh leaves .claude/scripts/pm empty"
+    else
+      bad "init.sh: .claude/scripts/pm no longer matches the documented defect"
+    fi
+  else
+    echo "  skipped: gh not installed (apt-get install -y gh)"
+  fi
 
   head_ "install wiring: slash commands discoverable AND their scripts resolve"
   local n=0 broken=0
