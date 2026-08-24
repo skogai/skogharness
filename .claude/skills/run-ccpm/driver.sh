@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# CCPM harness: static-lints the asset bundle, then installs it into a
-# throwaway project, seeds fixture PRD/epic/task data, and runs every
-# script-backed /pm:* command against it asserting real output.
+# CCPM harness: static-lints the plugin marketplace, then seeds a throwaway
+# project with fixture PRD/epic/task data and runs every script-backed
+# /pm:* command against it asserting real output.
 #
-#   driver.sh lint      static checks on ccpm/ (no sandbox needed)
+#   driver.sh lint      static checks on plugins/ (no sandbox needed)
 #   driver.sh sandbox   build scratch project + fixtures
 #   driver.sh smoke     run all 14 script-backed commands, assert output
 #   driver.sh all       lint + sandbox + smoke
@@ -15,6 +15,8 @@ set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SANDBOX="${CCPM_SANDBOX:-/tmp/ccpm-sandbox}"
 case "$SANDBOX" in /*) ;; *) SANDBOX="$PWD/$SANDBOX" ;; esac   # cmd_smoke needs it absolute
+PLUGINS="$REPO/plugins"
+PM_SCRIPTS="$PLUGINS/pm-core/scripts/pm"
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "  ok   $*"; }
 bad()  { FAIL=$((FAIL+1)); echo "  FAIL $*"; }
@@ -22,19 +24,69 @@ head_() { echo; echo "=== $* ==="; }
 
 # Fenced bash blocks that are already broken on main. New entries here are
 # regressions and fail the lint. See SKILL.md "Known-broken command blocks".
-KNOWN_BAD_BLOCKS="ccpm/commands/pm/epic-merge.md:3
-ccpm/commands/pm/epic-sync.md:12"
+KNOWN_BAD_BLOCKS="plugins/pm-core/commands/pm/epic-merge.md:3
+plugins/pm-core/commands/pm/epic-sync.md:12"
 
 # Scripts shipping a broken/absent shebang today. Same deal: known, not new.
 KNOWN_BAD_SHEBANGS="prd-list.sh"
 
+# Every plugin directory, one per line.
+plugin_dirs() { find "$PLUGINS" -mindepth 1 -maxdepth 1 -type d | sort; }
+
 # ---------------------------------------------------------------- lint
+
+lint_manifests() {
+  head_ "plugin + marketplace manifests"
+  local mk="$REPO/.claude-plugin/marketplace.json"
+  if [ ! -f "$mk" ]; then bad ".claude-plugin/marketplace.json missing"; return; fi
+  if python3 -m json.tool "$mk" >/dev/null 2>&1; then ok "marketplace.json is valid JSON"
+  else bad "marketplace.json is not valid JSON"; return; fi
+
+  # every source listed in the marketplace must exist and carry a manifest
+  while read -r entry; do
+    [ -n "$entry" ] || continue
+    if [ -d "$REPO/$entry" ]; then ok "marketplace source exists: $entry"
+    else bad "marketplace lists $entry but no such directory"; continue; fi
+    if [ -f "$REPO/$entry/.claude-plugin/plugin.json" ]; then :
+    else bad "$entry has no .claude-plugin/plugin.json"; fi
+  done < <(python3 -c '
+import json,sys
+d=json.load(open(sys.argv[1]))
+for p in d.get("plugins",[]):
+    print(str(p.get("source","")).lstrip("./"))
+' "$mk" 2>/dev/null)
+
+  # every plugin on disk must have a valid manifest whose name matches its dir
+  while read -r d; do
+    local name manifest
+    name="$(basename "$d")"
+    manifest="$d/.claude-plugin/plugin.json"
+    if [ ! -f "$manifest" ]; then bad "$name: no .claude-plugin/plugin.json"; continue; fi
+    if ! python3 -m json.tool "$manifest" >/dev/null 2>&1; then
+      bad "$name: plugin.json is not valid JSON"; continue
+    fi
+    declared=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("name",""))' "$manifest")
+    if [ "$declared" = "$name" ]; then ok "$name: manifest valid, name matches directory"
+    else bad "$name: plugin.json declares name '$declared'"; fi
+  done < <(plugin_dirs)
+
+  # hook configs must be valid JSON too
+  while read -r h; do
+    [ -f "$h" ] || continue
+    rel="${h#$REPO/}"
+    if python3 -m json.tool "$h" >/dev/null 2>&1; then ok "$rel is valid JSON"
+    else bad "$rel is not valid JSON"; fi
+  done < <(find "$PLUGINS" -name 'hooks.json' | sort)
+}
 
 lint_scripts() {
   head_ "bash -n: shipped scripts"
+  local n=0
   while read -r f; do
-    if err=$(bash -n "$f" 2>&1); then ok "$f"; else bad "$f: $err"; fi
-  done < <(find "$REPO/ccpm" -name '*.sh' | sed "s|$REPO/||" | sort | sed "s|^|$REPO/|")
+    n=$((n+1))
+    if err=$(bash -n "$f" 2>&1); then ok "${f#$REPO/}"; else bad "${f#$REPO/}: $err"; fi
+  done < <(find "$PLUGINS" -name '*.sh' | sort)
+  [ "$n" -eq 0 ] && bad "found no shipped scripts at all"
 }
 
 lint_shebangs() {
@@ -50,50 +102,91 @@ lint_shebangs() {
           bad "$(basename "$f"): shebang is commented out or missing -> '$first'"
         fi ;;
     esac
-  done < <(find "$REPO/ccpm" -name '*.sh' | sort)
+  done < <(find "$PLUGINS" -name '*.sh' | sort)
 }
 
+# Commands address their scripts as ${CLAUDE_PLUGIN_ROOT}/scripts/... .
+# Resolve that per plugin: the variable expands to the plugin's own root.
 lint_command_paths() {
-  head_ "command -> script path resolution"
+  head_ "command -> script path resolution (\${CLAUDE_PLUGIN_ROOT})"
   local n=0
-  while read -r p; do
-    n=$((n+1))
-    if [ -f "$REPO/$p" ]; then ok "!bash $p"; else bad "!bash $p (no such script)"; fi
-  done < <(grep -rhoE '^!bash [^ ]+\.sh' "$REPO/ccpm/commands" | sed 's/^!bash //' | sort -u)
-  [ "$n" -eq 0 ] && bad "found no !bash invocation lines at all"
+  while read -r d; do
+    [ -d "$d/commands" ] || continue
+    local root="$d" name; name="$(basename "$d")"
 
-  while read -r p; do
-    if [ -f "$REPO/$p" ]; then ok "allowed-tools $p"; else bad "allowed-tools $p (no such script)"; fi
-  done < <(grep -rhoE 'Bash\(bash [^ )]+\.sh' "$REPO/ccpm/commands" | sed 's/^Bash(bash //' | sort -u)
+    while read -r p; do
+      n=$((n+1))
+      resolved="${p/\$\{CLAUDE_PLUGIN_ROOT\}/$root}"
+      case "$p" in
+        *'${CLAUDE_PLUGIN_ROOT}'*) ;;
+        *) bad "$name: !bash $p does not use \${CLAUDE_PLUGIN_ROOT}"; continue ;;
+      esac
+      if [ -f "$resolved" ]; then ok "$name: !bash ${resolved#$REPO/}"
+      else bad "$name: !bash $p (no such script)"; fi
+    done < <(grep -rhoE '^!bash [^ ]+\.sh' "$d/commands" | sed 's/^!bash //' | sort -u)
+
+    while read -r p; do
+      resolved="${p/\$\{CLAUDE_PLUGIN_ROOT\}/$root}"
+      case "$p" in
+        *'${CLAUDE_PLUGIN_ROOT}'*) ;;
+        *) bad "$name: allowed-tools $p does not use \${CLAUDE_PLUGIN_ROOT}"; continue ;;
+      esac
+      if [ -f "$resolved" ]; then ok "$name: allowed-tools ${resolved#$REPO/}"
+      else bad "$name: allowed-tools $p (no such script)"; fi
+    done < <(grep -rhoE 'Bash\(bash [^ )]+\.sh' "$d/commands" | sed 's/^Bash(bash //' | sort -u)
+  done < <(plugin_dirs)
+  [ "$n" -eq 0 ] && bad "found no !bash invocation lines at all"
 }
 
 lint_frontmatter() {
   head_ "command frontmatter"
+  local n=0
   while read -r f; do
-    rel="${f#$REPO/}"
+    n=$((n+1)); rel="${f#$REPO/}"
     if [ "$(head -1 "$f")" != "---" ]; then bad "$rel: does not open with ---"; continue; fi
     close=$(awk 'NR>1 && /^---$/{print NR; exit}' "$f")
     if [ -z "$close" ]; then bad "$rel: frontmatter never closes"; continue; fi
     if ! sed -n "2,$((close-1))p" "$f" | grep -q '^allowed-tools:'; then bad "$rel: no allowed-tools"; continue; fi
     ok "$rel"
-  done < <(find "$REPO/ccpm/commands" -name '*.md' | sort)
+  done < <(find "$PLUGINS" -path '*/commands/*' -name '*.md' | sort)
+  [ "$n" -eq 0 ] && bad "found no command files at all"
 }
 
-lint_rule_refs() {
-  head_ "rules/*.md references resolve"
+# The rules/*.md bundle became the ccpm-rules plugin's auto-activating skills.
+# Skills are matched by description, not by path, so the check is now: every
+# SKILL.md carries name+description, and no command still points at a rules path.
+lint_skills() {
+  head_ "ccpm-rules skills"
   local n=0
-  while read -r r; do
-    n=$((n+1)); base="${r##*/}"
-    if [ -f "$REPO/ccpm/rules/$base" ]; then ok "$r -> ccpm/rules/$base"
-    else bad "$r references a rule that does not exist"; fi
-  done < <(grep -rhoE '(\.claude|ccpm)?/rules/[A-Za-z0-9._-]+\.md' \
-             "$REPO/ccpm/commands" "$REPO/ccpm/agents" \
-           | grep -oE '/rules/[A-Za-z0-9._-]+\.md' | sort -u)
-  [ "$n" -eq 0 ] && echo "  (no rule references found)"
+  while read -r f; do
+    n=$((n+1)); rel="${f#$REPO/}"
+    dir="$(basename "$(dirname "$f")")"
+    if [ "$(head -1 "$f")" != "---" ]; then bad "$rel: does not open with ---"; continue; fi
+    close=$(awk 'NR>1 && /^---$/{print NR; exit}' "$f")
+    if [ -z "$close" ]; then bad "$rel: frontmatter never closes"; continue; fi
+    fm=$(sed -n "2,$((close-1))p" "$f")
+    declared=$(grep -m1 '^name:' <<<"$fm" | sed 's/^name: *//')
+    if [ -z "$declared" ]; then bad "$rel: no name in frontmatter"; continue; fi
+    if [ "$declared" != "$dir" ]; then bad "$rel: name '$declared' != directory '$dir'"; continue; fi
+    if ! grep -q '^description:' <<<"$fm"; then
+      bad "$rel: no description -- the skill can never auto-activate"; continue
+    fi
+    ok "$rel"
+  done < <(find "$PLUGINS" -path '*/skills/*' -name 'SKILL.md' | sort)
+  [ "$n" -eq 0 ] && bad "found no skills at all"
+
+  head_ "no stale rules/*.md references remain"
+  local stale
+  stale=$(grep -rlE '(\.claude|ccpm)/rules/[A-Za-z0-9._-]+\.md' "$PLUGINS" 2>/dev/null)
+  if [ -z "$stale" ]; then ok "no command or skill points at a retired rules/ path"
+  else
+    bad "stale rules/ references (those files no longer exist):"
+    sed "s|^$REPO/|       |" <<<"$stale" | head -10
+  fi
 }
 
 lint_bash_blocks() {
-  head_ "bash -n: fenced blocks inside command/rule/agent markdown"
+  head_ "bash -n: fenced blocks inside command/skill/agent markdown"
   local tmp total=0 newbad=0 knownhit=0
   tmp=$(mktemp -d)
   while read -r f; do
@@ -111,9 +204,10 @@ lint_bash_blocks() {
       fi
       rm -f "$blk"
     done
-  done < <(find "$REPO/ccpm/commands" "$REPO/ccpm/rules" "$REPO/ccpm/agents" -name '*.md' | sort)
+  done < <(find "$PLUGINS" \( -path '*/commands/*' -o -path '*/skills/*' -o -path '*/agents/*' \) -name '*.md' | sort)
   rm -rf "$tmp"
   echo "  checked $total blocks: $newbad new failures, $knownhit known-bad"
+  [ "$total" -eq 0 ] && bad "found no fenced bash blocks at all -- the glob is probably wrong"
   [ "$newbad" -eq 0 ] && ok "no new bash-block regressions"
 }
 
@@ -122,7 +216,7 @@ lint_path_standards() {
   # cannot pass"). Assert the substantive scans -- Checks 1-3 -- instead.
   head_ "check-path-standards.sh (Checks 1-3)"
   local out
-  out=$(cd "$REPO" && bash ccpm/scripts/check-path-standards.sh 2>&1)
+  out=$(cd "$REPO" && bash "$PLUGINS/pm-core/scripts/check-path-standards.sh" 2>&1)
   for c in "No absolute path violations found" \
            "No user-specific paths found" \
            "Path formats are consistent"; do
@@ -130,13 +224,13 @@ lint_path_standards() {
   done
   if grep -qF "Found absolute path violations" <<<"$out" \
   || grep -qF "Found user-specific paths"    <<<"$out"; then
-    bad "real path violations introduced:"; grep -E '^\.claude|^ccpm' <<<"$out" | head -10 | sed 's/^/       /'
+    bad "real path violations introduced:"; grep -E '^\.claude|^plugins' <<<"$out" | head -10 | sed 's/^/       /'
   fi
 }
 
 cmd_lint() {
-  lint_scripts; lint_shebangs; lint_command_paths; lint_frontmatter
-  lint_rule_refs; lint_bash_blocks; lint_path_standards
+  lint_manifests; lint_scripts; lint_shebangs; lint_command_paths
+  lint_frontmatter; lint_skills; lint_bash_blocks; lint_path_standards
 }
 
 # ------------------------------------------------------------- sandbox
@@ -147,13 +241,11 @@ cmd_sandbox() {
   ( cd "$SANDBOX" || exit 1
   git init -q .
   git remote add origin https://github.com/acme/demo-app.git   # NOT automazeio/ccpm
-  cp -r "$REPO/ccpm" .                                         # what install/ccpm.sh yields
-  mkdir -p .claude/prds .claude/epics                          # what init.sh yields
-  # Neither layout alone works (see SKILL.md "The install is a hybrid"):
-  # scripts must sit at ccpm/ for the !bash lines, commands must sit at
-  # .claude/ for Claude Code to register the slash commands.
-  ln -s ../ccpm/commands .claude/commands
-  ln -s ../ccpm/agents   .claude/agents
+  # Under the plugin model there is no copy step: Claude Code installs the
+  # plugin out-of-tree and the commands reach their scripts through
+  # ${CLAUDE_PLUGIN_ROOT}. The user's project holds runtime data only --
+  # exactly the two directories init.sh creates.
+  mkdir -p .claude/prds .claude/epics
   local now; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
   prd() { # prd <name> <status> <desc>
@@ -242,11 +334,13 @@ expect() {
   done
 
   local out rc
+  # Scripts run from the user's project but live in the installed plugin --
+  # CLAUDE_PLUGIN_ROOT is what Claude Code exports for exactly this.
   # NB: "${args[@]:-}" would pass one empty string, not zero args.
   if [ ${#args[@]} -eq 0 ]; then
-    out=$(cd "$SANDBOX" && bash "ccpm/scripts/pm/$script" 2>&1); rc=$?
+    out=$(cd "$SANDBOX" && CLAUDE_PLUGIN_ROOT="$PLUGINS/pm-core" bash "$PM_SCRIPTS/$script" 2>&1); rc=$?
   else
-    out=$(cd "$SANDBOX" && bash "ccpm/scripts/pm/$script" "${args[@]}" 2>&1); rc=$?
+    out=$(cd "$SANDBOX" && CLAUDE_PLUGIN_ROOT="$PLUGINS/pm-core" bash "$PM_SCRIPTS/$script" "${args[@]}" 2>&1); rc=$?
   fi
   local missing=()
   [ "$rc" = "$want_rc" ] || missing+=("<exit $want_rc, got $rc>")
@@ -290,38 +384,49 @@ cmd_smoke() {
   head_ "init.sh (the 14th script; needs gh, mutates the sandbox)"
   if command -v gh >/dev/null 2>&1; then
     local out rc
-    out=$(cd "$SANDBOX" && timeout 120 bash ccpm/scripts/pm/init.sh 2>&1); rc=$?
+    out=$(cd "$SANDBOX" && CLAUDE_PLUGIN_ROOT="$PLUGINS/pm-core" timeout 120 bash "$PM_SCRIPTS/init.sh" 2>&1); rc=$?
     if [ "$rc" -eq 0 ] && grep -qF "Initialization Complete" <<<"$out"; then
       ok "init.sh completes (exit 0) despite unauthenticated gh"
     else
       bad "init.sh exit $rc"; tail -5 <<<"$out" | sed 's/^/         | /'
     fi
-    # documents the empty-dir defect rather than asserting it is correct
-    if [ -d "$SANDBOX/.claude/scripts/pm" ] && [ -z "$(ls -A "$SANDBOX/.claude/scripts/pm")" ]; then
-      ok "known defect reproduced: init.sh leaves .claude/scripts/pm empty"
+    # Under the plugin model init.sh creates runtime data only. The old
+    # copy-scripts-into-.claude step (and the empty-dir defect it left behind)
+    # is gone -- assert it stays gone.
+    if [ -d "$SANDBOX/.claude/prds" ] && [ -d "$SANDBOX/.claude/epics" ]; then
+      ok "init.sh creates the runtime data directories"
     else
-      bad "init.sh: .claude/scripts/pm no longer matches the documented defect"
+      bad "init.sh did not create .claude/prds and .claude/epics"
+    fi
+    if [ -e "$SANDBOX/.claude/scripts" ]; then
+      bad "init.sh still creates .claude/scripts -- that is the retired copy-install step"
+    else
+      ok "init.sh no longer copies scripts into .claude (plugin resolves its own paths)"
     fi
   else
     echo "  skipped: gh not installed (apt-get install -y gh)"
   fi
 
-  head_ "install wiring: slash commands discoverable AND their scripts resolve"
+  head_ "install wiring: every command's script resolves from its plugin root"
   local n=0 broken=0
-  while read -r f; do
-    n=$((n+1)); rel="${f#$SANDBOX/}"
-    scr=$(grep -oE '^!bash [^ ]+\.sh' "$f" | sed 's/^!bash //')
-    [ -n "$scr" ] || continue
-    if [ -f "$SANDBOX/$scr" ]; then :; else broken=$((broken+1)); bad "$rel -> $scr unresolved"; fi
-  done < <(find -L "$SANDBOX/.claude/commands" -name '*.md' 2>/dev/null | sort)
+  while read -r d; do
+    [ -d "$d/commands" ] || continue
+    while read -r f; do
+      scr=$(grep -oE '^!bash [^ ]+\.sh' "$f" | sed 's/^!bash //')
+      [ -n "$scr" ] || continue
+      n=$((n+1))
+      resolved="${scr/\$\{CLAUDE_PLUGIN_ROOT\}/$d}"
+      [ -f "$resolved" ] || { broken=$((broken+1)); bad "${f#$REPO/} -> $scr unresolved"; }
+    done < <(find "$d/commands" -name '*.md' | sort)
+  done < <(plugin_dirs)
   if [ "$n" -gt 0 ] && [ "$broken" -eq 0 ]; then
-    ok "$n commands discoverable under .claude/commands, all !bash targets resolve"
-  elif [ "$n" -eq 0 ]; then bad "no commands visible under .claude/commands"; fi
+    ok "$n script-backed commands resolve against their plugin root"
+  elif [ "$n" -eq 0 ]; then bad "no script-backed commands found"; fi
 
   head_ "validate.sh catches a broken dependency reference"
   local out
   sed -i 's/^depends_on: \[001\]/depends_on: [099]/' "$SANDBOX/.claude/epics/user-auth/002.md"
-  out=$(cd "$SANDBOX" && bash ccpm/scripts/pm/validate.sh 2>&1)
+  out=$(cd "$SANDBOX" && CLAUDE_PLUGIN_ROOT="$PLUGINS/pm-core" bash "$PM_SCRIPTS/validate.sh" 2>&1)
   if grep -qF "references missing task: 099" <<<"$out"; then ok "broken ref detected"
   else bad "validate.sh did not flag the broken reference"; echo "$out" | sed 's/^/         | /'; fi
   sed -i 's/^depends_on: \[099\]/depends_on: [001]/' "$SANDBOX/.claude/epics/user-auth/002.md"
