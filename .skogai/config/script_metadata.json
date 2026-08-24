@@ -1,0 +1,12 @@
+{
+  "/home/skogix/skogai/scripts/worktree-pre-switch.sh": {
+    "run_count": 1,
+    "last_run": "2026-08-24T04:54:16.017502",
+    "last_updated": "2026-08-24T04:54:16.017711"
+  },
+  "/home/skogix/skogai/scripts/worktree-post-switch.sh": {
+    "run_count": 1,
+    "last_run": "2026-08-24T07:54:42.210800",
+    "last_updated": "2026-08-24T07:54:42.211037"
+  }
+}
