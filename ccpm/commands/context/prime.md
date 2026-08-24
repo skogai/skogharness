@@ -129,13 +129,11 @@ If some files fail to load:
   - "Missing technical context - run /context:create to rebuild"
   - "Progress file corrupted - run /context:update to refresh"
 
-### 7. Performance Optimization
+### 7. Handling Large Contexts
 
-For large contexts:
-- Load files in parallel when possible
-- Show progress indicator: "Loading context files... {current}/{total}"
-- Skip extremely large files (>10000 lines) with warning
-- Cache parsed frontmatter for faster subsequent loads
+For large context directories:
+- Within each priority tier, issue the `Read` calls together rather than one at a time, so files in that tier load concurrently
+- Skip extremely large files (>10000 lines) with a warning: "⚠️ {filename} too large ({lines} lines), skipping"
 
 ## Important Notes
 
