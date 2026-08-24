@@ -1,0 +1,13 @@
+{
+  "name": "pm-core",
+  "version": "1.0.0",
+  "description": "CCPM project-management commands: PRD -> epic -> task workflow over GitHub Issues, parallel-execution agents, and the worktree Bash-cwd hook.",
+  "author": {
+    "name": "automazeio",
+    "url": "https://github.com/automazeio/ccpm"
+  },
+  "homepage": "https://github.com/automazeio/ccpm",
+  "repository": "https://github.com/automazeio/ccpm",
+  "license": "MIT",
+  "keywords": ["pm", "github", "project-management", "epics", "prds", "worktrees"]
+}

@@ -1,13 +1,14 @@
 ---
 name: run-ccpm
-description: Build, run, and drive CCPM — install the asset bundle into a throwaway project, seed fixture PRD/epic/task data, and run every script-backed /pm:* command against it. Use when asked to run CCPM, test a command or script change, verify the /pm:* commands still work, lint the command markdown, or reproduce a PM command's output.
+description: Build, run, and drive CCPM — lint the plugin marketplace, seed a throwaway project with fixture PRD/epic/task data, and run every script-backed /pm:* command against it. Use when asked to run CCPM, test a command or script change, verify the /pm:* commands still work, lint the command markdown, validate the plugin manifests, or reproduce a PM command's output.
 ---
 
-CCPM ships no application — it is a bundle of Codex slash commands,
-subagent definitions, rules, and bash scripts that get installed into
-*someone else's* project. So "running it" means installing the bundle into a
-throwaway project, seeding fixture PRD/epic/task data, and executing the
-commands against it. Do that with **`.Codex/skills/run-ccpm/driver.sh`**.
+CCPM ships no application — it is a Codex **plugin marketplace**: four
+plugins of slash commands, subagent definitions, skills, and bash scripts that
+get installed into *someone else's* project. So "running it" means linting the
+plugins, seeding a throwaway project with fixture PRD/epic/task data, and
+executing the commands against it. Do that with
+**`.Codex/skills/run-ccpm/driver.sh`**.
 
 All paths below are relative to the repo root.
 
@@ -15,14 +16,14 @@ All paths below are relative to the repo root.
 bash .Codex/skills/run-ccpm/driver.sh all
 ```
 
-That is the whole loop: static-lint the bundle, build a sandbox at
+That is the whole loop: static-lint the plugins, build a sandbox at
 `/tmp/ccpm-sandbox`, run all 14 script-backed commands, assert their output.
-It prints `passed: 140  failed: 0` and exits 0 on a clean checkout.
+It prints `passed: 157  failed: 0` and exits 0 on a clean checkout.
 
 ## Prerequisites
 
 Everything the driver needs is already present on a stock Ubuntu container
-(`bash`, `git`, `find`, `sed`, `rg`). Only `gh` is missing, and only
+(`bash`, `git`, `find`, `sed`, `rg`, `python3`). Only `gh` is missing, and only
 `init.sh` and the GitHub-syncing commands need it:
 
 ```bash
@@ -35,7 +36,7 @@ sudo apt-get update && sudo apt-get install -y gh   # installs gh 2.45.0
 ## Run (agent path)
 
 ```bash
-bash .Codex/skills/run-ccpm/driver.sh lint      # static checks on ccpm/, no sandbox
+bash .Codex/skills/run-ccpm/driver.sh lint      # static checks on plugins/, no sandbox
 bash .Codex/skills/run-ccpm/driver.sh sandbox   # build /tmp/ccpm-sandbox + fixtures
 bash .Codex/skills/run-ccpm/driver.sh smoke     # run the commands, assert output
 bash .Codex/skills/run-ccpm/driver.sh all       # all three
@@ -43,26 +44,32 @@ bash .Codex/skills/run-ccpm/driver.sh all       # all three
 
 Override the sandbox location with `CCPM_SANDBOX=/path bash ... driver.sh all`.
 
-**`lint`** (119 assertions) is the one that catches the breakage this repo
-actually ships. It runs `bash -n` over every shipped `.sh`, checks every
-shebang, resolves every `!bash` and `allowed-tools: Bash(bash …)` target,
-validates command frontmatter, resolves `rules/*.md` references, extracts
-and syntax-checks all 110 fenced ```bash blocks inside command/rule/agent
-markdown, and runs the substantive path-standards scans. **Editing a command
-`.md` and not running `lint` is how `3c8e0e7` and `1cb9483` happened.**
+**`lint`** (135 assertions) is the one that catches the breakage this repo
+actually ships. It validates `marketplace.json` and every `plugin.json` /
+`hooks.json` as JSON (and checks each declared plugin `name` matches its
+directory, and each marketplace `source` exists), runs `bash -n` over every
+shipped `.sh`, checks every shebang, resolves every `!bash` and
+`allowed-tools: Bash(bash …)` target through `${CLAUDE_PLUGIN_ROOT}`, validates
+command frontmatter, checks every `SKILL.md` has a `name` matching its
+directory plus a `description` (without one a skill can never auto-activate),
+extracts and syntax-checks all 110 fenced ```bash blocks inside
+command/skill/agent markdown, and runs the substantive path-standards scans.
+**Editing a command `.md` and not running `lint` is how `3c8e0e7` and
+`1cb9483` happened.**
 
-**`sandbox`** builds a correct install (see *The install is a hybrid* below)
-and seeds: 3 PRDs (one per status), 3 epics (one per status), 5 tasks
-(3 open / 2 closed, one with a `depends_on` so `blocked`/`next` diverge),
-and one `updates/002/progress.md` at 35% so `in-progress` and `standup`
-have something to report.
+**`sandbox`** builds a user project the way the plugin model expects — runtime
+data only, no copied assets (see *No install step* below) — and seeds: 3 PRDs
+(one per status), 3 epics (one per status), 5 tasks (3 open / 2 closed, one
+with a `depends_on` so `blocked`/`next` diverge), and one
+`updates/002/progress.md` at 35% so `in-progress` and `standup` have something
+to report.
 
-**`smoke`** (21 assertions) runs each of the 13 reporting commands and greps
+**`smoke`** (22 assertions) runs each of the 13 reporting commands and greps
 for exact expected strings — counts, percentages, task names — asserting the
 exit code too. It also checks the four argument-less error paths exit 1,
 runs `init.sh` (the 14th script) separately since it needs `gh` and mutates
-the sandbox, confirms all 46 commands are discoverable with their scripts
-resolving, and verifies `validate.sh` actually flags an injected broken
+the sandbox, confirms every script-backed command resolves against its own
+plugin root, and verifies `validate.sh` actually flags an injected broken
 dependency reference.
 
 The assertions are not vacuous. Flipping one fixture task from `closed` to
@@ -77,10 +84,12 @@ The assertions are not vacuous. Flipping one fixture task from `closed` to
 
 ### Running one command by hand
 
-The sandbox persists. To iterate on a single script:
+The sandbox persists. To iterate on a single script, export the variable
+Codex would set for the installed plugin and run the repo copy directly:
 
 ```bash
-cd /tmp/ccpm-sandbox && bash ccpm/scripts/pm/epic-status.sh user-auth
+cd /tmp/ccpm-sandbox && CLAUDE_PLUGIN_ROOT=$OLDPWD/plugins/pm-core \
+  bash "$OLDPWD/plugins/pm-core/scripts/pm/epic-status.sh" user-auth
 ```
 
 ```
@@ -98,8 +107,9 @@ Progress: [██████░░░░░░░░░░░░░░] 33%
 🔗 GitHub: https://github.com/acme/demo-app/issues/10
 ```
 
-After editing a script in `ccpm/`, re-run `driver.sh sandbox` to re-copy it
-into the sandbox — `smoke` runs the sandbox's copy, not the repo's.
+Unlike the old bundle-copy install, `smoke` runs the scripts **in the repo**,
+not a copy. Editing a script takes effect immediately — no re-`sandbox` needed
+unless you changed the fixture data.
 
 ## Run (human path)
 
@@ -110,80 +120,54 @@ covers them, which is why its bash-block extraction matters.
 
 ## Gotchas
 
-**The install is a hybrid, and neither documented layout works alone.**
-`install/ccpm.sh` clones the repo into the project, yielding `ccpm/` at the
-project root. The README instead talks about a `.Codex` directory. Both are
-half right, and I verified each fails on its own:
-
-| Layout | Slash commands discovered? | `!bash ccpm/scripts/…` resolves? |
-|---|---|---|
-| `ccpm/` at project root (what the installer does) | ❌ Codex only scans `.Codex/commands/` | ✅ |
-| bundle copied into `.Codex/` (what the README implies) | ✅ | ❌ every command's `!bash` line 404s |
-
-A working install needs both — scripts reachable at `ccpm/scripts/…` from
-the project root, commands visible under `.Codex/commands/`. `driver.sh
-sandbox` does it with symlinks:
+**No install step — that whole class of bug is gone.** The retired model
+copied `ccpm/` into the project and needed symlinks to satisfy two
+incompatible layouts at once (scripts reachable from the project root,
+commands visible under `.Codex/commands/`). Plugins resolve their own paths
+via `${CLAUDE_PLUGIN_ROOT}`, so the user's project holds runtime data only:
 
 ```bash
-cp -r ccpm /path/to/project/
-cd /path/to/project && mkdir -p .Codex
-ln -s ../ccpm/commands .Codex/commands
-ln -s ../ccpm/agents   .Codex/agents
+mkdir -p .Codex/prds .Codex/epics    # exactly what init.sh creates
 ```
 
-Note `find` will not descend into those symlinks without `-L`.
+If you find a command hardcoding `ccpm/scripts/…` or a doc describing the
+copy-and-symlink install, it is stale — `lint` fails any command whose script
+path doesn't go through `${CLAUDE_PLUGIN_ROOT}`.
 
-**`check-path-standards.sh` cannot exit 0 — in any layout.** AGENTS.md says
-it "must exit 0"; that is not achievable on a clean checkout, so don't chase
-it. Two independent reasons:
-
-- *Check 4* runs `find .Codex/epics/*/updates/ -name "*.md"`. In a repo with
-  no epics the glob doesn't expand, `find` exits non-zero, and under the
-  script's `set -Eeuo pipefail` that kills the whole run at Check 4. The
-  summary block is unreachable.
-- *Check 5* requires `.Codex/rules/path-standards.md`, but the repo ships
-  that file at `ccpm/rules/path-standards.md`. Stage a copy at the `.Codex`
-  path and *Check 1* then flags it — because `-g '!rules/**'` is anchored to
-  the **cwd**, not to the `.Codex/` search path, so it only ever excludes
-  `./rules/**`. It would need `-g '!**/rules/**'`. (Proof: the same rg
-  invocation run from inside `.Codex/` excludes correctly.)
-
-So the file's own absolute-path documentation examples (the very ones it
-exists to warn against) get reported as violations. `driver.sh` sidesteps this by asserting Checks 1–3 report
-success rather than trusting the exit code.
+**`check-path-standards.sh` cannot exit 0.** CLAUDE.md says it "must exit 0";
+that is not achievable on a clean checkout, so don't chase it. *Check 4* runs
+`find .Codex/epics/*/updates/ -name "*.md"`. In a repo with no epics the glob
+doesn't expand, `find` exits non-zero, and under the script's
+`set -Eeuo pipefail` that kills the whole run at Check 4 — the summary block is
+unreachable. `driver.sh` sidesteps this by asserting Checks 1–3 report success
+rather than trusting the exit code.
 
 **This skill lives inside Check 1's scan scope.** `check-path-standards.sh`
-greps all of `.Codex/`, and that now includes `SKILL.md` and `driver.sh`.
-Writing a literal absolute-path example into either file turns the lint red
-(it caught exactly that while this skill was being written). Describe such
-paths instead of spelling them out, and re-run `driver.sh lint` after editing
-the skill itself.
-
-**`init.sh` creates `.Codex/scripts/pm/` and leaves it empty.** Its copy
-step is guarded by `[ -d "scripts/pm" ]`, but in an installed project the
-scripts live at `ccpm/scripts/pm`, so the branch never fires. Anything
-expecting `.Codex/scripts/pm/*.sh` to exist after `/pm:init` is wrong.
+greps all of `.Codex/`, and that includes `SKILL.md` and `driver.sh`. Writing
+a literal absolute-path example into either file turns the lint red (it caught
+exactly that while this skill was being written). Check 3's heuristic is
+cruder still: it trips on any of five bare source-directory substrings (the
+short one for sources, plus the ones for libraries, internal, commands and
+configs) appearing anywhere alongside a `./`, so even a shell variable named
+after the first of them failed it — hence `driver.sh` names that variable
+`entry`. Don't spell those directory names literally in here either.
+Describe such paths instead of spelling them out, and re-run `driver.sh lint`
+after editing the skill itself.
 
 **`init.sh` calls `gh auth login` unguarded.** With no TTY it fails through
 harmlessly and the script still exits 0 (it degrades past a failed
 `gh-sub-issue` install and an unauthenticated `gh` too). Attached to a
 terminal it will sit at an interactive prompt.
 
-**Agents reference `.Codex/scripts/test-and-log.sh`, which ships at
-`ccpm/scripts/test-and-log.sh`.** `ccpm/agents/test-runner.md` names the
-stale path three times. The file does exist — just not where the agent looks.
-
-**Five of the eleven rules are never referenced by anything.**
-`path-standards.md`, `standard-patterns.md`, `strip-frontmatter.md`,
-`test-execution.md`, `use-ast-grep.md`. The other six are cited 2–7 times.
-So a command that ought to follow `strip-frontmatter.md` has no
-`## Required Rules` line pointing at it. `lint` reports what resolves, not
-what *should* be cited — check by hand when adding a command.
-
-Note the citations are written three ways — `.Codex/rules/x.md`,
-`ccpm/rules/x.md`, and a bare `/rules/x.md` (the most common form, 21 of
-them). A reference check that only matches the prefixed forms sees one
-lonely rule and looks like a much bigger finding than it is.
+**Skills replaced the old `rules/*.md` bundle, and they activate by
+description, not by citation.** The eleven files under
+`plugins/ccpm-rules/skills/` used to be `ccpm/rules/*.md`, cited by a
+`## Required Rules` block naming a file path. Commands no longer name paths —
+Codex matches a skill's `description` against the task. That makes the
+old "five rules are never referenced by anything" finding moot, but it moves
+the failure mode: a skill with a vague `description` silently never fires.
+`lint` asserts every `SKILL.md` *has* a description; whether it is specific
+enough to match real tasks is a judgment call, so read it when adding one.
 
 **`((count++))` returns exit 1 when count is 0.** The PM scripts rely on not
 running under `set -e`. If you add `set -e` to one of them it will exit
@@ -194,15 +178,15 @@ silently at the first increment. All of them end with an explicit `exit 0`.
 `lint` allowlists two pre-existing bugs so a clean checkout is green and any
 *new* breakage is loud. Both are real and worth fixing:
 
-- **`ccpm/commands/pm/epic-merge.md` block 3** — `git merge … -m "Merge epic:
-  $ARGUMENTS` opens a double quote that isn't closed until `fi"` 24 lines
-  later. Everything between is swallowed into the commit message instead of
-  executing, so the feature-list loop never runs.
-- **`ccpm/commands/pm/epic-sync.md` block 12** — the heredoc opened with
-  `<< 'EOF'` is terminated by an indented `  EOF`, which doesn't close it.
+- **`plugins/pm-core/commands/pm/epic-merge.md` block 3** — `git merge … -m
+  "Merge epic: $ARGUMENTS` opens a double quote that isn't closed until `fi"`
+  24 lines later. Everything between is swallowed into the commit message
+  instead of executing, so the feature-list loop never runs.
+- **`plugins/pm-core/commands/pm/epic-sync.md` block 12** — the heredoc opened
+  with `<< 'EOF'` is terminated by an indented `  EOF`, which doesn't close it.
   (`<<-` wouldn't help either; it strips tabs, not spaces.)
 
-**`prd-list.sh` silently drops PRDs whose status is `complete`.** `AGENTS.md`
+**`prd-list.sh` silently drops PRDs whose status is `complete`.** `CLAUDE.md`
 documents the PRD vocabulary as `backlog|in-progress|complete`, but
 `prd-list.sh` buckets on `implemented|completed|done`. A PRD marked with the
 documented `complete` matches no bucket, so it is counted in the total and
@@ -211,9 +195,10 @@ differently, falling through to `*)` and counting it as backlog. The fixture
 uses the documented vocabulary, so `smoke` asserts the current buggy output;
 fixing the script means updating that assertion.
 
-Also allowlisted: **`ccpm/scripts/pm/prd-list.sh` starts with `# !/bin/bash`**
-— a commented-out shebang. Harmless while it's invoked as `bash prd-list.sh`
-(which is how the command frontmatter does it), broken if executed directly.
+Also allowlisted: **`plugins/pm-core/scripts/pm/prd-list.sh` starts with
+`# !/bin/bash`** — a commented-out shebang. Harmless while it's invoked as
+`bash prd-list.sh` (which is how the command frontmatter does it), broken if
+executed directly.
 
 Fixing any of these means removing its entry from `KNOWN_BAD_BLOCKS` /
 `KNOWN_BAD_SHEBANGS` at the top of `driver.sh`.
@@ -223,9 +208,10 @@ Fixing any of these means removing its entry from `KNOWN_BAD_BLOCKS` /
 | Symptom | Cause / fix |
 |---|---|
 | `smoke` says `no sandbox; run: driver.sh sandbox` | `/tmp/ccpm-sandbox` was reaped. Re-run `driver.sh sandbox`. |
-| Edited a script but `smoke` shows old behavior | `smoke` runs the sandbox's copy. Re-run `driver.sh sandbox`. |
 | `lint` reports a new bash-block failure | Real regression in a fenced ```bash block. `bash -n` the block; usually an unbalanced quote or heredoc. |
+| `lint` says a command "does not use `${CLAUDE_PLUGIN_ROOT}`" | A script path was written relative to the repo instead of the plugin root. It will 404 once installed. |
+| `lint` says `plugin.json declares name '…'` | The manifest `name` and the directory under `plugins/` drifted apart. |
 | `gh: command not found` from `init.sh` | `apt-get install -y gh` works here (2.45.0). Not needed for the driver. |
 | `could not check for binary extension: HTTP 403` | `gh extension install yahsan2/gh-sub-issue` reaching an unauthorized repo. `init.sh` continues past it; the task-list fallback covers it. |
 | `check-path-standards.sh` exits 1 | Expected — see the gotcha above. Read its Check 1–3 lines instead. |
-| A GitHub-writing command refuses to run | By design: `rules/github-operations.md` bails when `origin` is `automazeio/ccpm`. The sandbox sets `origin` to `acme/demo-app` to avoid this. |
+| A GitHub-writing command refuses to run | By design: the `github-operations` skill bails when `origin` is `automazeio/ccpm`. The sandbox sets `origin` to `acme/demo-app` to avoid this. |

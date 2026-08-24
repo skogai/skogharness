@@ -1,0 +1,13 @@
+{
+  "name": "testing-tools",
+  "version": "1.0.0",
+  "description": "Detect a project's test framework, run its suite through a log-capturing wrapper, and report failures without flooding the main thread with raw output.",
+  "author": {
+    "name": "automazeio",
+    "url": "https://github.com/automazeio/ccpm"
+  },
+  "homepage": "https://github.com/automazeio/ccpm",
+  "repository": "https://github.com/automazeio/ccpm",
+  "license": "MIT",
+  "keywords": ["testing", "test-runner", "ci"]
+}

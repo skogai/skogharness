@@ -1,0 +1,13 @@
+{
+  "name": "context-tools",
+  "version": "1.0.0",
+  "description": "Create, prime, and update the project context knowledge base (.claude/context) that CCPM agents read at session start.",
+  "author": {
+    "name": "automazeio",
+    "url": "https://github.com/automazeio/ccpm"
+  },
+  "homepage": "https://github.com/automazeio/ccpm",
+  "repository": "https://github.com/automazeio/ccpm",
+  "license": "MIT",
+  "keywords": ["context", "onboarding", "documentation"]
+}
