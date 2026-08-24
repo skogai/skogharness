@@ -1,0 +1,13 @@
+{
+  "name": "ccpm-rules",
+  "version": "1.0.0",
+  "description": "Shared CCPM conventions (datetime, frontmatter, GitHub operations, worktrees, path standards, ...) shipped as auto-activating skills so pm-core, context-tools, and testing-tools stay consistent without duplicating rule text.",
+  "author": {
+    "name": "automazeio",
+    "url": "https://github.com/automazeio/ccpm"
+  },
+  "homepage": "https://github.com/automazeio/ccpm",
+  "repository": "https://github.com/automazeio/ccpm",
+  "license": "MIT",
+  "keywords": ["conventions", "rules", "skills", "style-guide"]
+}

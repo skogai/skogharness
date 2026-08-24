@@ -1,0 +1,29 @@
+{
+  "name": "ccpm-marketplace",
+  "owner": {
+    "name": "skogai",
+    "url": "https://github.com/skogai/skogharness"
+  },
+  "plugins": [
+    {
+      "name": "pm-core",
+      "source": "./plugins/pm-core",
+      "description": "PRD -> epic -> task project management over GitHub Issues, plus parallel-execution agents and the worktree Bash-cwd hook."
+    },
+    {
+      "name": "context-tools",
+      "source": "./plugins/context-tools",
+      "description": "Create, prime, and update the project context knowledge base."
+    },
+    {
+      "name": "testing-tools",
+      "source": "./plugins/testing-tools",
+      "description": "Framework-detecting test runner with log-capturing execution."
+    },
+    {
+      "name": "ccpm-rules",
+      "source": "./plugins/ccpm-rules",
+      "description": "Shared CCPM conventions, shipped as auto-activating skills."
+    }
+  ]
+}

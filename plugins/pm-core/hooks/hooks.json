@@ -1,0 +1,14 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/bash-worktree-fix.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ]
+}
