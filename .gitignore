@@ -1,5 +1,7 @@
-.DS_Store
-.idea/
-/.skogai/config/script_metadata.json
-/.skogai/config/script_metadata.json
+skill/ccpm-workspace/
+skill/ccpm/evals/
+ccpm-talk/
+CCPM_CLI_REWRITE_PRD.md
+ccpm-cli-prd.md
+video
 /.skogai/config/script_metadata.json
