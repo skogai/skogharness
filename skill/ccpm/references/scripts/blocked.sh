@@ -23,20 +23,9 @@ for epic_dir in .claude/epics/*/; do
     fi
 
     # Check for dependencies
-<<<<<<<< HEAD:plugins/pm-core/scripts/pm/blocked.sh
-    # Extract dependencies from task file
-    deps_line=$(grep "^depends_on:" "$task_file" | head -1)
-    if [ -n "$deps_line" ]; then
-      deps=$(echo "$deps_line" | sed 's/^depends_on: *//')
-      deps=$(echo "$deps" | sed 's/^\[//' | sed 's/\]$//')
-      deps=$(echo "$deps" | sed 's/,/ /g')
-      # Trim whitespace and handle empty cases
-      deps=$(echo "$deps" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-========
     deps_line=$(grep "^depends_on:" "$task_file" | head -1)
     if [ -n "$deps_line" ]; then
       deps=$(echo "$deps_line" | sed 's/^depends_on: *//' | sed 's/^\[//' | sed 's/\]$//' | sed 's/,/ /g' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
->>>>>>>> 5b51740 (Refactor to Agent Skills–compatible skill):skill/ccpm/references/scripts/blocked.sh
       [ -z "$deps" ] && deps=""
     else
       deps=""
