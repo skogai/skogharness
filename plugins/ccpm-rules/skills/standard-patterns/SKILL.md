@@ -1,6 +1,7 @@
 ---
 name: standard-patterns
-description: Use when writing or editing any CCPM command file. Defines the house style: fail fast, minimal preflight, trust gh/git, concise error format, no permission-asking for non-destructive work.
+description: |-
+  Use when writing or editing any CCPM command file. Defines the house style: fail fast, minimal preflight, trust gh/git, concise error format, no permission-asking for non-destructive work.
 ---
 
 # Standard Patterns for Commands
