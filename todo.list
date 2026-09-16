@@ -1,0 +1,5 @@
+---
+type: list
+permalink: claude.skogix.todo
+---
+- [ ] claude needs to stagger his config.json and essentially have one safe/base and one actively pointing to depending on task. example; when via ssh have one namespace and so on

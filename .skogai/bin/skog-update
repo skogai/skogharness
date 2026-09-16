@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo "todo; this starts any skogai project. if it is an agent then a new session is started. if a user then we use direnv as on/off. if a executable we usually set a SKOGAI_ENV with the pid and use it being set or not as the repo lock"
