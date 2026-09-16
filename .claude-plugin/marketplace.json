@@ -1,29 +1,295 @@
 {
-  "name": "skogharness-marketplace",
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "skogai-market",
+  "version": "0.0.61",
+  "description": "skogai-market",
   "owner": {
-    "name": "skogai",
-    "url": "https://github.com/skogai/skogharness"
+    "name": "skogix",
+    "url": "https://github.com/skogai"
+  },
+  "renames": {
+    "forge": null,
+    "verity": null,
+    "jetbrains-router": null
   },
   "plugins": [
     {
-      "name": "pm-core",
-      "source": "./plugins/pm-core",
-      "description": "PRD -> epic -> task project management over GitHub Issues, plus parallel-execution agents and the worktree Bash-cwd hook."
+      "name": "claude-md-management",
+      "source": "./claude-md-management",
+      "version": "1.0.0",
+      "description": "Tools to maintain and improve CLAUDE.md files - audit quality, capture session learnings, and keep project memory current.",
+      "author": {
+        "name": "Anthropic",
+        "email": "support@anthropic.com"
+      }
     },
     {
-      "name": "context-tools",
-      "source": "./plugins/context-tools",
-      "description": "Create, prime, and update the project context knowledge base."
+      "name": "claude-memory",
+      "source": "./claude-basic-memory",
+      "version": "0.22.1",
+      "description": "The bridge between Claude's working memory and Basic Memory's durable knowledge graph — session briefings, pre-compaction checkpoints, and capture reflexes",
+      "repository": "https://github.com/skogai/basic-memory/tree/main/plugins/claude-code"
     },
     {
-      "name": "testing-tools",
-      "source": "./plugins/testing-tools",
-      "description": "Framework-detecting test runner with log-capturing execution."
+      "name": "codex",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/openai/codex-plugin-cc.git",
+        "path": "plugins/codex"
+      },
+      "version": "1.0.6",
+      "description": "Use Codex from Claude Code to review code or delegate tasks.",
+      "author": {
+        "name": "OpenAI"
+      }
     },
     {
-      "name": "ccpm-rules",
-      "source": "./plugins/ccpm-rules",
-      "description": "Shared CCPM conventions, shipped as auto-activating skills."
+      "name": "feature-dev",
+      "source": "./feature-dev",
+      "description": "Comprehensive feature development workflow with specialized agents for codebase exploration, architecture design, and quality review",
+      "author": {
+        "name": "Anthropic",
+        "email": "support@anthropic.com"
+      }
+    },
+    {
+      "name": "foreman",
+      "source": "./foreman",
+      "description": "Prompt-engineering and project-roadmap plugin that crafts Anthropic-grade prompts and picks, surveys, and tracks your next tasks.",
+      "author": {
+        "name": "Victor Villegas",
+        "email": "victor.villegas@tuta.com"
+      },
+      "license": "MIT",
+      "homepage": "https://github.com/V-Songbird/foreman",
+      "repository": "https://github.com/V-Songbird/foreman",
+      "keywords": [
+        "prompting",
+        "prompt-engineering",
+        "roadmap",
+        "planning",
+        "task-selection",
+        "background-agent",
+        "automation"
+      ]
+    },
+    {
+      "name": "hush",
+      "source": "./hush",
+      "description": "Token-lean sessions at the harness level, measured on real multi-turn coding sessions — a terse output style, output-shrinking hooks, and log compression cut output tokens and narration.",
+      "author": {
+        "name": "Victor Villegas",
+        "email": "victor.villegas@tuta.com"
+      },
+      "license": "MIT",
+      "homepage": "https://github.com/V-Songbird/hush",
+      "repository": "https://github.com/V-Songbird/hush",
+      "keywords": [
+        "tokens",
+        "token-optimization",
+        "output-style",
+        "compression",
+        "hooks",
+        "terse",
+        "cost"
+      ]
+    },
+    {
+      "name": "mattpocock-skills",
+      "source": {
+        "source": "url",
+        "url": "git@github.com:skogai/mattpocock-skills.git"
+      },
+      "version": "1.2.3",
+      "description": "Matt Pocock's agent skills for real engineering — grilling, spec/ticket flows, TDD, code review, domain modelling and more. Plug-and-play, not vibe coding.",
+      "author": {
+        "name": "Matt Pocock",
+        "url": "https://www.aihero.dev"
+      },
+      "license": "MIT",
+      "homepage": "https://www.aihero.dev/s/skills-newsletter",
+      "repository": "https://github.com/mattpocock/skills",
+      "keywords": [
+        "engineering",
+        "skills",
+        "tdd",
+        "code-review",
+        "grilling",
+        "domain-modeling",
+        "productivity"
+      ],
+      "skills": [
+        "./skills/engineering/ask-matt",
+        "./skills/engineering/diagnosing-bugs",
+        "./skills/engineering/grill-with-docs",
+        "./skills/engineering/triage",
+        "./skills/engineering/improve-codebase-architecture",
+        "./skills/engineering/setup-matt-pocock-skills",
+        "./skills/engineering/tdd",
+        "./skills/engineering/to-spec",
+        "./skills/engineering/to-tickets",
+        "./skills/engineering/wayfinder",
+        "./skills/engineering/implement",
+        "./skills/engineering/prototype",
+        "./skills/engineering/research",
+        "./skills/engineering/domain-modeling",
+        "./skills/engineering/codebase-design",
+        "./skills/engineering/code-review",
+        "./skills/engineering/resolving-merge-conflicts",
+        "./skills/engineering/wizard",
+        "./skills/productivity/grill-me",
+        "./skills/productivity/grilling",
+        "./skills/productivity/handoff",
+        "./skills/productivity/teach",
+        "./skills/productivity/to-questionnaire",
+        "./skills/productivity/wait-what",
+        "./skills/productivity/writing-for-agents"
+      ]
+    },
+    {
+      "name": "nelson",
+      "source": {
+        "source": "url",
+        "url": "git@github.com:skogai/nelson.git"
+      },
+      "version": "2.4.0",
+      "description": "Royal Navy agent coordination framework — sailing orders, battle plans, action stations, and a captain's log",
+      "author": {
+        "name": "Harry Munro"
+      },
+      "license": "MIT",
+      "repository": "https://github.com/harrymunro/nelson",
+      "keywords": [
+        "agents",
+        "coordination",
+        "teams",
+        "workflow"
+      ]
+    },
+    {
+      "name": "plugin-dev",
+      "source": "./plugin-dev",
+      "description": "Plugin development toolkit with skills for creating agents, commands, hooks, MCP integrations, and comprehensive plugin structure guidance",
+      "author": {
+        "name": "Anthropic",
+        "email": "support@anthropic.com"
+      }
+    },
+    {
+      "name": "ponytail",
+      "source": "./ponytail",
+      "version": "4.8.4",
+      "description": "Lazy senior dev mode. Forces the simplest, shortest solution that actually works: YAGNI, stdlib first, no unrequested abstractions.",
+      "author": {
+        "name": "Dietrich Gebert",
+        "url": "https://github.com/DietrichGebert"
+      }
+    },
+    {
+      "name": "razor",
+      "source": "./razor",
+      "description": "YAGNI enforcement at the harness level for real engineering work — nudges toward the simplest solution and gates against unnecessary dependencies, file sprawl, and unchecked build growth.",
+      "author": {
+        "name": "Victor Villegas",
+        "email": "victor.villegas@tuta.com"
+      },
+      "license": "MIT",
+      "homepage": "https://github.com/V-Songbird/razor",
+      "repository": "https://github.com/V-Songbird/razor",
+      "keywords": [
+        "yagni",
+        "token-optimization",
+        "minimalism",
+        "over-engineering",
+        "hooks",
+        "subagents",
+        "dependency-guard",
+        "lazy"
+      ]
+    },
+    {
+      "name": "skill-creator",
+      "source": "./skill-creator",
+      "description": "Create new skills, improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, update or optimize an existing skill, run evals to test a skill, or benchmark skill performance with variance analysis.",
+      "author": {
+        "name": "Anthropic",
+        "email": "support@anthropic.com"
+      }
+    },
+    {
+      "name": "skogai-core",
+      "source": "./skogai-core",
+      "description": "skogai core",
+      "author": {
+        "name": "Skogix",
+        "email": "emil@skogsund.se",
+        "url": "https://github.com/skogix"
+      },
+      "repository": "https://github.com/skogai/nelson.git",
+      "keywords": [
+        "hooks",
+        "logging",
+        "session",
+        "validation"
+      ]
+    },
+    {
+      "name": "skogai-routing",
+      "source": {
+        "source": "url",
+        "url": "git@github.com:skogai/skogai-routing.git"
+      },
+      "description": "Author and validate SKOGAI.md routing files: YAML frontmatter plus XML tags (starting with <routes>), loaded into CLAUDE.md via native @-linking.",
+      "author": {
+        "name": "Emil Skogsund",
+        "email": "emil@skogsund.se"
+      },
+      "keywords": [
+        "skogai",
+        "routing",
+        "frontmatter",
+        "xml",
+        "at-linking"
+      ],
+      "agents": [
+        "./agents/route-guide.md"
+      ],
+      "skills": [
+        "./skills/skogai-routing"
+      ]
+    },
+    {
+      "name": "skoghooks",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/skogai/skoghooks.git",
+        "path": "plugins/skoghooks"
+      },
+      "version": "1.0.0",
+      "description": "Lifecycle hooks for logging, context loading, and validation across Claude Code sessions",
+      "author": {
+        "name": "Skogix",
+        "email": "emil@skogsund.se",
+        "url": "https://github.com/skogix"
+      },
+      "keywords": [
+        "hooks",
+        "logging",
+        "session",
+        "validation"
+      ]
+    },
+    {
+      "name": "worktrunk",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/skogai/worktrunk.git",
+        "path": "plugins/worktrunk"
+      },
+      "description": "Worktrunk is a CLI for Git worktree management, designed for parallel AI agent workflows. This plugin provides configuration guidance (LLM commit messages, project hooks, worktree paths) and automatic activity tracking (🤖/💬 indicators in `wt list` showing active Claude sessions).",
+      "author": {
+        "name": "Worktrunk"
+      }
     }
   ]
 }
