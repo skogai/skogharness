@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 PROJECT_NAME=$(gh repo view --json name | jq ".name" --raw-output)
 export SKOGAI_CONFIG_DIR=".skogai/config/${PROJECT_NAME}"
-uv tool run "git+https://github.com/skogai/cli.git" "$@"
+uvx "git+https://github.com/skogai/cli.git" "$@"

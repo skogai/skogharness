@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+uv tool install "git+https://github.com/gptme/gptme-contrib#subdirectory=packages/gptodo" "$@" --force --upgrade
