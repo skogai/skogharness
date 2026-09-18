@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "DocType": {
+      "description": "Placeholder type values, not confirmed against defs.schema.json.",
+      "enum": [
+        "router",
+        "workflow",
+        "reference"
+      ],
+      "title": "DocType",
+      "type": "string"
+    },
+    "TestSection": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "TestSection",
+      "type": "object"
+    }
+  },
+  "description": "A minimal stand-in document shape -- not the real skogai-routing document schema.",
+  "properties": {
+    "path": {
+      "title": "Path",
+      "type": "string"
+    },
+    "type": {
+      "$ref": "#/$defs/DocType"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/TestSection"
+      },
+      "title": "Sections",
+      "type": "array"
+    }
+  },
+  "required": [
+    "path",
+    "type"
+  ],
+  "title": "TestDocument",
+  "type": "object"
+}
